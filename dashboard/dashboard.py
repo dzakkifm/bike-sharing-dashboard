@@ -1,31 +1,42 @@
+import os
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 
 st.set_page_config(
-    page_title="Bike Sharing Analysis Dashboard",
+    page_title="Bike Sharing Data Analytics Dashboard",
     page_icon="🚲",
     layout="wide"
 )
 
-# Load Data
+# Jalur absolut file main_data.csv
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_PATH = os.path.join(SCRIPT_DIR, "main_data.csv")
+
+# Memuat data
 @st.cache_data
 def load_data():
-    df = pd.read_csv("dashboard/main_data.csv")
+    if not os.path.exists(DATA_PATH):
+        st.error(f"File 'main_data.csv' tidak ditemukan di lokasi: {DATA_PATH}")
+        return None
+    df = pd.read_csv(DATA_PATH)
     df['dteday'] = pd.to_datetime(df['dteday'])
     return df
 
-day_df = load_data()
+df = load_data()
 
-# Header Dashboard
+if df is None:
+    st.stop()
+
+# Header
 st.title("🚲 Bike Sharing Data Analytics Dashboard")
-st.markdown("Dashboard interaktif untuk menganalisis tren penyewaan sepeda harian berdasarkan kondisi cuaca dan musim.")
+st.markdown("Dashboard interaktif untuk menganalisis tren penyewaan sepeda harian berdasarkan kondisi cuaca dan pola jam sibuk.")
 
 # Sidebar Filter
 st.sidebar.header("Filter Data")
-min_date = day_df['dteday'].min()
-max_date = day_df['dteday'].max()
+min_date = df['dteday'].min()
+max_date = df['dteday'].max()
 
 start_date, end_date = st.sidebar.date_input(
     label="Rentang Waktu",
@@ -34,35 +45,46 @@ start_date, end_date = st.sidebar.date_input(
     value=[min_date, max_date]
 )
 
-# Filter Dataframe
-main_df = day_df[(day_df['dteday'] >= pd.to_datetime(start_date)) & (day_df['dteday'] <= pd.to_datetime(end_date))]
+# Filter Dataframe berdasarkan rentang tanggal
+main_df = df[(df['dteday'] >= pd.to_datetime(start_date)) & (df['dteday'] <= pd.to_datetime(end_date))]
 
-# Key Performance Indicators (KPIs)
+# Ringkasan Metrik (KPIs)
 col1, col2, col3 = st.columns(3)
 with col1:
     st.metric("Total Penyewaan", value=f"{main_df['cnt'].sum():,}")
 with col2:
-    st.metric("Rata-rata Penyewaan Harian", value=f"{int(main_df['cnt'].mean()):,}")
-with col3:
     st.metric("Total Pengguna Registered", value=f"{main_df['registered'].sum():,}")
+with col3:
+    st.metric("Total Pengguna Casual", value=f"{main_df['casual'].sum():,}")
 
 st.markdown("---")
 
-# Visualisasi 1: Dampak Cuaca
-st.subheader("📊 Rata-rata Penyewaan Sepeda Berdasarkan Cuaca")
-weather_avg = main_df.groupby('weather_label')['cnt'].mean().reset_index()
+# Visualisasi 1: Jawaban Pertanyaan 1 (Pengaruh Cuaca)
+st.subheader("📊 Visualisasi 1: Rata-rata Penyewaan Sepeda Berdasarkan Cuaca")
+weather_avg = main_df.groupby('weather_label')['cnt'].mean().reset_index().sort_values(by='cnt', ascending=False)
 
-fig, ax = plt.subplots(figsize=(8, 4))
-sns.barplot(data=weather_avg, x='weather_label', y='cnt', palette='Blues_d', ax=ax)
-ax.set_xlabel("Kondisi Cuaca")
-ax.set_ylabel("Rata-rata Penyewaan")
-st.pyplot(fig)
+fig1, ax1 = plt.subplots(figsize=(8, 4))
+sns.barplot(data=weather_avg, x='weather_label', y='cnt', palette='Blues_d', ax=ax1)
+ax1.set_xlabel("Kondisi Cuaca")
+ax1.set_ylabel("Rata-rata Penyewaan")
+for p in ax1.patches:
+    ax1.annotate(
+        f'{p.get_height():.0f}',
+        (p.get_x() + p.get_width() / 2., p.get_height()),
+        ha='center', va='bottom', fontsize=9, xytext=(0, 3), textcoords='offset points'
+    )
+st.pyplot(fig1)
 
-# Visualisasi 2: Perbandingan Pengguna
-st.subheader("👥 Komposisi Pengguna (Casual vs Registered)")
-casual_total = main_df['casual'].sum()
-registered_total = main_df['registered'].sum()
+# Visualisasi 2: Jawaban Pertanyaan 2 (Pola per Jam pada Hari Kerja)
+st.subheader("⏰ Visualisasi 2: Pola Rata-Rata Penyewaan per Jam pada Hari Kerja")
+workingday_df = main_df[main_df['workingday'] == 1].groupby('hr')[['casual', 'registered']].mean().reset_index()
 
-fig2, ax2 = plt.subplots(figsize=(6, 4))
-ax2.pie([casual_total, registered_total], labels=['Casual', 'Registered'], autopct='%1.1f%%', colors=['#ff9999','#66b3ff'], startangle=90)
+fig2, ax2 = plt.subplots(figsize=(10, 4.5))
+ax2.plot(workingday_df['hr'], workingday_df['registered'], label='Registered Users', color='#1f77b4', marker='o', linewidth=2)
+ax2.plot(workingday_df['hr'], workingday_df['casual'], label='Casual Users', color='#ff7f0e', marker='s', linewidth=2)
+ax2.set_xlabel("Jam (00:00 - 23:00)")
+ax2.set_ylabel("Rata-rata Penyewaan")
+ax2.set_xticks(range(0, 24))
+ax2.legend(title='Tipe Pengguna')
+ax2.grid(True, linestyle='--', alpha=0.5)
 st.pyplot(fig2)
