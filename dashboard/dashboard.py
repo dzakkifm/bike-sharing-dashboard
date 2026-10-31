@@ -1,110 +1,116 @@
-import os
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-st.set_page_config(
-    page_title="Bike Sharing Data Analytics Dashboard",
-    page_icon="🚲",
-    layout="wide"
-)
+st.set_page_config(page_title="Bike Sharing Dashboard 2012", layout="wide")
 
-# Jalur absolut file main_data.csv
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_PATH = os.path.join(SCRIPT_DIR, "main_data.csv")
-
-# Memuat data
+# 1. Load Data
 @st.cache_data
 def load_data():
-    if not os.path.exists(DATA_PATH):
-        st.error(f"File 'main_data.csv' tidak ditemukan di lokasi: {DATA_PATH}")
-        return None
-    df = pd.read_csv(DATA_PATH)
+    df = pd.read_csv("dashboard/main_data.csv")
     df['dteday'] = pd.to_datetime(df['dteday'])
     return df
 
-df = load_data()
+main_df = load_data()
 
-if df is None:
-    st.stop()
-
-# Header
-st.title("🚲 Bike Sharing Data Analytics Dashboard")
-st.markdown("Dashboard interaktif untuk menganalisis tren penyewaan sepeda harian berdasarkan kondisi cuaca dan pola jam sibuk.")
-
-# Sidebar Filter
+# 2. Sidebar - Date Filter Default ke Tahun 2012
 st.sidebar.header("Filter Data")
-min_date = df['dteday'].min().date()
-max_date = df['dteday'].max().date()
 
-# Penanganan filter tanggal yang lebih aman
-date_range = st.sidebar.date_input(
-    label="Rentang Waktu",
+min_date = main_df['dteday'].min().date()
+max_date = main_df['dteday'].max().date()
+
+# Default awal: Tahun 2012
+default_start = pd.to_datetime("2012-01-01").date()
+default_end = pd.to_datetime("2012-12-31").date()
+
+start_date, end_date = st.sidebar.date_input(
+    label='Rentang Waktu',
     min_value=min_date,
     max_value=max_date,
-    value=[min_date, max_date]
+    value=[default_start, default_end]
 )
 
-if isinstance(date_range, list) or isinstance(date_range, tuple):
-    if len(date_range) == 2:
-        start_date, end_date = date_range
-    else:
-        start_date = date_range[0]
-        end_date = max_date
-else:
-    start_date = date_range
-    end_date = max_date
+# Filter Dataframe berdasarkan Input Sidebar
+filtered_df = main_df[(main_df['dteday'].dt.date >= start_date) & 
+                      (main_df['dteday'].dt.date <= end_date)]
 
-# Filter Dataframe berdasarkan rentang tanggal
-main_df = df[(df['dteday'].dt.date >= start_date) & (df['dteday'].dt.date <= end_date)]
+# Pesan Notifikasi Konsistensi Filter
+if start_date.year != 2012 or end_date.year != 2012:
+    st.info("ℹ️ **Catatan:** Anda sedang melihat rentang tanggal di luar cakupan utama pertanyaan bisnis (Tahun 2012). Tampilan ini berfungsi sebagai eksplorasi tambahan.")
 
-# Ringkasan Metrik (KPIs)
+# Main Title
+st.title("🚲 Dashboard Analisis Penyewaan Sepeda (2012)")
+
+# Metric Cards
 col1, col2, col3 = st.columns(3)
 with col1:
-    st.metric("Total Penyewaan", value=f"{main_df['cnt'].sum():,}")
+    st.metric("Total Penyewaan", value=f"{filtered_df['cnt'].sum():,}")
 with col2:
-    st.metric("Total Pengguna Registered", value=f"{main_df['registered'].sum():,}")
+    st.metric("Penyewaan Casual", value=f"{filtered_df['casual'].sum():,}")
 with col3:
-    st.metric("Total Pengguna Casual", value=f"{main_df['casual'].sum():,}")
+    st.metric("Penyewaan Registered", value=f"{filtered_df['registered'].sum():,}")
 
-st.markdown("---")
+st.divider()
 
-# Visualisasi 1: Jawaban Pertanyaan 1 (Pengaruh Cuaca)
-st.subheader("📊 Visualisasi 1: Rata-rata Penyewaan Sepeda Berdasarkan Cuaca")
-weather_avg = main_df.groupby('weather_label')['cnt'].mean().reset_index().sort_values(by='cnt', ascending=False)
+# --- VISUALISASI 1: Pengaruh Cuaca ---
+st.subheader("1. Rata-rata Penyewaan Sepeda Berdasarkan Kondisi Cuaca")
 
-fig1, ax1 = plt.subplots(figsize=(8, 4))
-# Menambahkan hue dan legend=False untuk mencegah deprecation warning
+weather_df = filtered_df.groupby('weather_label')['cnt'].mean().reset_index()
+
+fig, ax = plt.subplots(figsize=(8, 4))
 sns.barplot(
-    data=weather_avg, 
-    x='weather_label', 
-    y='cnt', 
-    hue='weather_label', 
-    palette='Blues_d', 
-    legend=False, 
-    ax=ax1
+    data=weather_df,
+    x='weather_label',
+    y='cnt',
+    hue='weather_label',
+    palette='Blues_d',
+    ax=ax,
+    legend=False
 )
-ax1.set_xlabel("Kondisi Cuaca")
-ax1.set_ylabel("Rata-rata Penyewaan")
-for p in ax1.patches:
-    ax1.annotate(
-        f'{p.get_height():.0f}',
-        (p.get_x() + p.get_width() / 2., p.get_height()),
-        ha='center', va='bottom', fontsize=9, xytext=(0, 3), textcoords='offset points'
-    )
-st.pyplot(fig1)
+ax.set_title("Rata-rata Penyewaan per Kondisi Cuaca", fontsize=12)
+ax.set_xlabel("Kondisi Cuaca")
+ax.set_ylabel("Rata-rata Penyewaan")
 
-# Visualisasi 2: Jawaban Pertanyaan 2 (Pola per Jam pada Hari Kerja)
-st.subheader("⏰ Visualisasi 2: Pola Rata-Rata Penyewaan per Jam pada Hari Kerja")
-workingday_df = main_df[main_df['workingday'] == 1].groupby('hr')[['casual', 'registered']].mean().reset_index()
+for p in ax.patches:
+    ax.annotate(f'{p.get_height():.0f}',
+                (p.get_x() + p.get_width() / 2., p.get_height()),
+                ha='center', va='bottom', fontsize=10, xytext=(0, 3), textcoords='offset points')
 
-fig2, ax2 = plt.subplots(figsize=(10, 4.5))
-ax2.plot(workingday_df['hr'], workingday_df['registered'], label='Registered Users', color='#1f77b4', marker='o', linewidth=2)
-ax2.plot(workingday_df['hr'], workingday_df['casual'], label='Casual Users', color='#ff7f0e', marker='s', linewidth=2)
-ax2.set_xlabel("Jam (00:00 - 23:00)")
-ax2.set_ylabel("Rata-rata Penyewaan")
-ax2.set_xticks(range(0, 24))
-ax2.legend(title='Tipe Pengguna')
-ax2.grid(True, linestyle='--', alpha=0.5)
-st.pyplot(fig2)
+st.pyplot(fig)
+
+st.divider()
+
+# --- VISUALISASI 2: Pola Per Jam Hari Kerja ---
+st.subheader("2. Pola Penyewaan per Jam pada Hari Kerja (Casual vs Registered)")
+
+# Filter Khusus Hari Kerja (workingday == 1)
+working_df = filtered_df[filtered_df['workingday'] == 1]
+
+if not working_df.empty:
+    hourly_pattern = working_df.groupby('hr')[['casual', 'registered']].mean().reset_index()
+    
+    # Menentukan Jam Puncak (Peak Hours)
+    peak_reg_hr = hourly_pattern.loc[hourly_pattern['registered'].idxmax(), 'hr']
+    peak_reg_val = hourly_pattern['registered'].max()
+    
+    fig2, ax2 = plt.subplots(figsize=(10, 5))
+    ax2.plot(hourly_pattern['hr'], hourly_pattern['casual'], marker='o', label='Casual', color='orange')
+    ax2.plot(hourly_pattern['hr'], hourly_pattern['registered'], marker='o', label='Registered', color='blue')
+    
+    # Highlight Jam Puncak
+    ax2.axvline(x=peak_reg_hr, color='red', linestyle='--', alpha=0.7, label=f'Jam Puncak ({int(peak_reg_hr)}:00)')
+    
+    ax2.set_title("Rata-rata Penyewaan per Jam (Hari Kerja)", fontsize=12)
+    ax2.set_xlabel("Jam (0-23)")
+    ax2.set_ylabel("Rata-rata Penyewaan")
+    ax2.set_xticks(range(0, 24))
+    ax2.grid(True, linestyle='--', alpha=0.5)
+    ax2.legend()
+    
+    st.pyplot(fig2)
+    
+    # Info Highlight
+    st.success(f"📌 **Insight Jam Puncak:** Pada hari kerja, tingkat penyewaan pengguna **Registered** mencapai puncaknya pada **pukul {int(peak_reg_hr)}:00 WIB** dengan rata-rata **{int(peak_reg_val)} unit/jam**.")
+else:
+    st.warning("Tidak ada data hari kerja pada rentang tanggal yang dipilih.")
