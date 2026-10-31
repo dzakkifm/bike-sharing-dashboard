@@ -35,18 +35,29 @@ st.markdown("Dashboard interaktif untuk menganalisis tren penyewaan sepeda haria
 
 # Sidebar Filter
 st.sidebar.header("Filter Data")
-min_date = df['dteday'].min()
-max_date = df['dteday'].max()
+min_date = df['dteday'].min().date()
+max_date = df['dteday'].max().date()
 
-start_date, end_date = st.sidebar.date_input(
+# Penanganan filter tanggal yang lebih aman
+date_range = st.sidebar.date_input(
     label="Rentang Waktu",
     min_value=min_date,
     max_value=max_date,
     value=[min_date, max_date]
 )
 
+if isinstance(date_range, list) or isinstance(date_range, tuple):
+    if len(date_range) == 2:
+        start_date, end_date = date_range
+    else:
+        start_date = date_range[0]
+        end_date = max_date
+else:
+    start_date = date_range
+    end_date = max_date
+
 # Filter Dataframe berdasarkan rentang tanggal
-main_df = df[(df['dteday'] >= pd.to_datetime(start_date)) & (df['dteday'] <= pd.to_datetime(end_date))]
+main_df = df[(df['dteday'].dt.date >= start_date) & (df['dteday'].dt.date <= end_date)]
 
 # Ringkasan Metrik (KPIs)
 col1, col2, col3 = st.columns(3)
@@ -64,7 +75,16 @@ st.subheader("📊 Visualisasi 1: Rata-rata Penyewaan Sepeda Berdasarkan Cuaca")
 weather_avg = main_df.groupby('weather_label')['cnt'].mean().reset_index().sort_values(by='cnt', ascending=False)
 
 fig1, ax1 = plt.subplots(figsize=(8, 4))
-sns.barplot(data=weather_avg, x='weather_label', y='cnt', palette='Blues_d', ax=ax1)
+# Menambahkan hue dan legend=False untuk mencegah deprecation warning
+sns.barplot(
+    data=weather_avg, 
+    x='weather_label', 
+    y='cnt', 
+    hue='weather_label', 
+    palette='Blues_d', 
+    legend=False, 
+    ax=ax1
+)
 ax1.set_xlabel("Kondisi Cuaca")
 ax1.set_ylabel("Rata-rata Penyewaan")
 for p in ax1.patches:
